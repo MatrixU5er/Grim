@@ -5,6 +5,8 @@ import ac.grim.grimac.checks.type.BlockPlaceCheck;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.BlockPlace;
 import ac.grim.grimac.utils.anticheat.update.PostBlockPlace;
+import ac.grim.grimac.utils.collisions.HitboxData;
+import ac.grim.grimac.utils.collisions.datatypes.CollisionBox;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
 import ac.grim.grimac.utils.data.Pair;
 import ac.grim.grimac.utils.nmsutil.Materials;
@@ -14,6 +16,7 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.world.BlockFace;
+import com.github.retrooper.packetevents.protocol.world.states.type.StateType;
 import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.util.Vector3f;
@@ -30,9 +33,8 @@ public class RotationPlace extends BlockPlaceCheck {
     double flagBuffer = 0; // If the player flags once, force them to play legit, or we will cancel the tick before.
     boolean ignorePost = false;
 
-    // 1.11- servers use byte on cursor
+    // how much 1.11- server threshold safe?
     double cursorThreshold = PacketEvents.getAPI().getServerManager().getVersion().isOlderThan(ServerVersion.V_1_11) ? 0.0626 : 0.0001;
-    // We don't know the correct cursor behind viarewind
     boolean shouldSkipCheckCursor = PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_11) && player.getClientVersion().isOlderThan(ClientVersion.V_1_11);
 
     public RotationPlace(GrimPlayer player) {
@@ -42,6 +44,45 @@ public class RotationPlace extends BlockPlaceCheck {
     @Override
     public void onBlockPlace(final BlockPlace place) {
         if (place.getMaterial() == StateTypes.SCAFFOLDING) return;
+
+        if (!shouldSkipCheckCursor) {
+            Vector3i clicked = place.getPlacedAgainstBlockLocation();
+
+            // use this until grim fix block boxes
+            StateType type = player.compensatedWorld.getWrappedBlockStateAt(clicked).getType();
+            boolean ableCheckFullBlock = type.isBlocking() && type.isSolid() && !type.exceedsCube();
+
+            CollisionBox placedOn = HitboxData.getBlockHitbox(player, place.getMaterial(), player.getClientVersion(), player.compensatedWorld.getWrappedBlockStateAt(clicked), clicked.getX(), clicked.getY(), clicked.getZ());
+
+            if (ableCheckFullBlock && placedOn instanceof SimpleCollisionBox && placedOn.isFullBlock()) {
+                boolean flag = false;
+                switch (place.getDirection()) {
+                    case SOUTH:
+                        flag = place.getCursor().getZ() != 1f;
+                        break;
+                    case NORTH:
+                        flag = place.getCursor().getZ() != 0f;
+                        break;
+                    case EAST:
+                        flag = place.getCursor().getX() != 1f;
+                        break;
+                    case WEST:
+                        flag = place.getCursor().getX() != 0f;
+                        break;
+                    case UP:
+                        flag = place.getCursor().getY() != 1f;
+                        break;
+                    case DOWN:
+                        flag = place.getCursor().getY() != 0f;
+                }
+                if (flag) {
+                    flagBuffer = 1;
+                    if (flagAndAlert("pre-flying-impossible-cursor "+place.getCursor()) && shouldModifyPackets() && shouldCancel()) {
+                        place.resync();
+                    }
+                }
+            }
+        }
 
         if (flagBuffer > 0) {
             // check it like the player sent a transaction
