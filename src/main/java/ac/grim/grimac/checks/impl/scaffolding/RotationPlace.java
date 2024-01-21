@@ -30,8 +30,9 @@ public class RotationPlace extends BlockPlaceCheck {
     double flagBuffer = 0; // If the player flags once, force them to play legit, or we will cancel the tick before.
     boolean ignorePost = false;
 
-    // how much 1.11- server threshold safe?
-    double cursorThreshold = PacketEvents.getAPI().getServerManager().getVersion().isOlderThan(ServerVersion.V_1_11) ? 0.1 : 0.0001;
+    // 1.11- servers use byte on cursor
+    double cursorThreshold = PacketEvents.getAPI().getServerManager().getVersion().isOlderThan(ServerVersion.V_1_11) ? 0.0626 : 0.0001;
+    // We don't know the correct cursor behind viarewind
     boolean shouldSkipCheckCursor = PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_11) && player.getClientVersion().isOlderThan(ClientVersion.V_1_11);
 
     public RotationPlace(GrimPlayer player) {
@@ -120,7 +121,7 @@ public class RotationPlace extends BlockPlaceCheck {
         }
 
         // player's rotation didn't change, don't use lastRot
-        if (!place.isFlying()) {
+        if (!place.isFlying() || !place.hasLook()) {
             possibleLookDirs = Collections.singletonList(new Vector3f(yaw, pitch, 0));
         }
 
