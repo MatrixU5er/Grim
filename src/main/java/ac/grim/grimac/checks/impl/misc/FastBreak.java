@@ -61,17 +61,20 @@ public class FastBreak extends Check implements PacketCheck {
         if (event.getPacketType() == PacketType.Play.Client.PLAYER_DIGGING) {
             WrapperPlayClientPlayerDigging digging = new WrapperPlayClientPlayerDigging(event);
 
+            final Vector3i blockPosition = digging.getBlockPosition();
             if (digging.getAction() == DiggingAction.START_DIGGING) {
-                WrappedBlockState block = player.compensatedWorld.getWrappedBlockStateAt(digging.getBlockPosition());
-                
+                WrappedBlockState block = player.compensatedWorld.getWrappedBlockStateAt(blockPosition);
+
+                // Always set this regardless of version to prevent falses with the `no_target` check
+                targetBlock = blockPosition;
+
                 // Exempt all blocks that do not exist in the player version
                 if (WrappedBlockState.getDefaultState(player.getClientVersion(), block.getType()).getType() == StateTypes.AIR) {
                     return;
                 }
             
                 startBreak = System.currentTimeMillis() - (targetBlock == null ? 50 : 0); // ???
-                targetBlock = digging.getBlockPosition();
-                
+
                 maximumBlockDamage = BlockBreakSpeed.getBlockDamage(player, targetBlock);
 
                 double breakDelay = System.currentTimeMillis() - lastFinishBreak;
@@ -93,7 +96,14 @@ public class FastBreak extends Check implements PacketCheck {
                 clampBalance();
             }
 
-            if (digging.getAction() == DiggingAction.FINISHED_DIGGING && targetBlock != null) {
+            if (digging.getAction() == DiggingAction.FINISHED_DIGGING) {
+                if (targetBlock == null) {
+                    if (flagAndAlert("type=no_target") && shouldModifyPackets()) {
+                        event.setCancelled(true);
+                    }
+                    return;
+                }
+
                 double predictedTime = Math.ceil(1 / maximumBlockDamage) * 50;
                 double realTime = System.currentTimeMillis() - startBreak;
                 double diff = predictedTime - realTime;
@@ -111,11 +121,11 @@ public class FastBreak extends Check implements PacketCheck {
                         Player bukkitPlayer = player.bukkitPlayer;
                         if (bukkitPlayer == null || !bukkitPlayer.isOnline()) return;
 
-                        if (bukkitPlayer.getLocation().distance(new Location(bukkitPlayer.getWorld(), digging.getBlockPosition().getX(), digging.getBlockPosition().getY(), digging.getBlockPosition().getZ())) < 64) {
-                            Chunk chunk = bukkitPlayer.getWorld().getChunkAt(digging.getBlockPosition().getX() >> 4, digging.getBlockPosition().getZ() >> 4);
+                        if (bukkitPlayer.getLocation().distance(new Location(bukkitPlayer.getWorld(), blockPosition.getX(), blockPosition.getY(), blockPosition.getZ())) < 64) {
+                            Chunk chunk = bukkitPlayer.getWorld().getChunkAt(blockPosition.getX() >> 4, blockPosition.getZ() >> 4);
                             if (!chunk.isLoaded()) return; // Don't load chunks sync
 
-                            Block block = chunk.getBlock(digging.getBlockPosition().getX() & 15, digging.getBlockPosition().getY(), digging.getBlockPosition().getZ() & 15);
+                            Block block = chunk.getBlock(blockPosition.getX() & 15, blockPosition.getY(), blockPosition.getZ() & 15);
 
                             int blockId;
 
@@ -126,7 +136,7 @@ public class FastBreak extends Check implements PacketCheck {
                                 blockId = (block.getType().getId() << 4) | block.getData();
                             }
 
-                            player.user.sendPacket(new WrapperPlayServerBlockChange(digging.getBlockPosition(), blockId));
+                            player.user.sendPacket(new WrapperPlayServerBlockChange(blockPosition, blockId));
 
                             if (PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_19)) { // Via will handle this for us pre-1.19
                                 player.user.sendPacket(new WrapperPlayServerAcknowledgeBlockChanges(digging.getSequence())); // Make 1.19 clients apply the changes
@@ -144,7 +154,9 @@ public class FastBreak extends Check implements PacketCheck {
             }
 
             if (digging.getAction() == DiggingAction.CANCELLED_DIGGING) {
-                targetBlock = null;
+                if (targetBlock != null && blockPosition.getX() == targetBlock.getX() && blockPosition.getY() == targetBlock.getY() && blockPosition.getZ() == targetBlock.getZ()) {
+                    targetBlock = null;
+                }
             }
         }
     }
