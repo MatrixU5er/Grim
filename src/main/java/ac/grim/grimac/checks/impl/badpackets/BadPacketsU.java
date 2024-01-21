@@ -12,9 +12,9 @@ import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying;
 
-@CheckData(name = "BadPacketsR", experimental = true)
-public class BadPacketsR extends Check implements PostPredictionCheck {
-    public BadPacketsR(GrimPlayer player) {
+@CheckData(name = "BadPacketsU", experimental = true)
+public class BadPacketsU extends Check implements PostPredictionCheck {
+    public BadPacketsU(GrimPlayer player) {
         super(player);
     }
 
