@@ -274,7 +274,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
                         || Materials.isClientSideInteractable(placedAgainst)) {
 
                     if (!player.compensatedEntities.getSelf().inVehicle()) {
-                        player.checkManager.onPostFlyingBlockPlace(blockPlace);
+                        player.checkManager.onPostFlyingBlockPlace(PostBlockPlace);
                     }
                     Vector3i location = blockPlace.getPlacedAgainstBlockLocation();
                     player.compensatedWorld.tickOpenable(location.getX(), location.getY(), location.getZ());
@@ -286,7 +286,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 // This causes a ton of desync's but mojang doesn't seem to care...
                 if (ConsumesBlockPlace.consumesPlace(player, player.compensatedWorld.getWrappedBlockStateAt(blockPlace.getPlacedAgainstBlockLocation()), blockPlace)) {
                     if (!player.compensatedEntities.getSelf().inVehicle()) {
-                        player.checkManager.onPostFlyingBlockPlace(blockPlace);
+                        player.checkManager.onPostFlyingBlockPlace(PostBlockPlace);
                     }
                     return;
                 }
