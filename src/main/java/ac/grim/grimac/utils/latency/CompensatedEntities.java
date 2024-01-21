@@ -112,8 +112,19 @@ public class CompensatedEntities {
                     }
 
                     // The server can set the player's sprinting attribute
-                    hasSprintingAttributeEnabled = found;
+                    if (player.maxPlayerAttackSlow > 0) { // If the player has attack slow applied
                     player.compensatedEntities.getSelf().playerSpeed = snapshotWrapper;
+                        // This happens very rarely, but without this here there will be falses
+                        boolean finalFound = found;
+                        player.sendTransaction();
+                        player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
+                            hasSprintingAttributeEnabled = finalFound;
+                            player.compensatedEntities.getSelf().playerSpeed = snapshotWrapper;
+                        });
+                    } else {
+                        hasSprintingAttributeEnabled = found;
+                        player.compensatedEntities.getSelf().playerSpeed = snapshotWrapper;
+                    }
                 }
             }
         }
