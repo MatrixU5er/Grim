@@ -164,7 +164,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
         }
     }
 
-    public static void handleQueuedPlaces(GrimPlayer player, boolean hasLook, float pitch, float yaw, long now) {
+    public static void handleQueuedPlaces(GrimPlayer player, boolean isFlying, boolean hasLook, float pitch, float yaw, long now) {
         // Handle queue'd block places
         BlockPlaceSnapshot snapshot;
         while ((snapshot = player.placeUseItemPackets.poll()) != null) {
@@ -195,7 +195,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
             }
 
             player.compensatedWorld.startPredicting();
-            handleBlockPlaceOrUseItem(snapshot.getWrapper(), player);
+            handleBlockPlaceOrUseItem(snapshot.getWrapper(), player, isFlying, hasLook, yaw, pitch);
             player.compensatedWorld.stopPredicting(snapshot.getWrapper());
 
             player.x = lastX;
@@ -222,7 +222,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
         }
     }
 
-    private static void handleBlockPlaceOrUseItem(PacketWrapper packet, GrimPlayer player) {
+    private static void handleBlockPlaceOrUseItem(PacketWrapper packet, GrimPlayer player, boolean isFlying, boolean hasLook, float yaw, float pitch) {
         // Legacy "use item" packet
         if (packet instanceof WrapperPlayClientPlayerBlockPlacement &&
                 PacketEvents.getAPI().getServerManager().getVersion().isOlderThan(ServerVersion.V_1_9)) {
@@ -306,7 +306,21 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 placedWith = player.getInventory().getOffHand();
             }
 
-            BlockPlace blockPlace = new BlockPlace(player, place.getHand(), blockPosition, face, placedWith, getNearestHitResult(player, null, true));
+            PostBlockPlace blockPlace = new PostBlockPlace(player, place.getHand(), blockPosition, face, placedWith, getNearestHitResult(player, null, true), isFlying, hasLook, yaw, pitch);
+            blockPlace.setCursor(place.getCursorPosition());
+
+            if (PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_11) && player.getClientVersion().isOlderThan(ClientVersion.V_1_11)) {
+                // ViaRewind is stupid and divides the byte by 15 to get the float
+                // We must undo this to get the correct block place... why?
+                if (place.getCursorPosition().getX() * 15 % 1 == 0 && place.getCursorPosition().getY() * 15 % 1 == 0 && place.getCursorPosition().getZ() * 15 % 1 == 0) {
+                    // This is impossible to occur without ViaRewind, fix their stupidity
+                    int trueByteX = (int) (place.getCursorPosition().getX() * 15);
+                    int trueByteY = (int) (place.getCursorPosition().getY() * 15);
+                    int trueByteZ = (int) (place.getCursorPosition().getZ() * 15);
+
+                    blockPlace.setCursor(new Vector3f(trueByteX / 16f, trueByteY / 16f, trueByteZ / 16f));
+                }
+            }
             // At this point, it is too late to cancel, so we can only flag, and cancel subsequent block places more aggressively
             if (!player.compensatedEntities.getSelf().inVehicle()) {
                 player.checkManager.onPostFlyingBlockPlace(blockPlace);
@@ -646,7 +660,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
             player.lastYRot = player.yRot;
         }
 
-        handleQueuedPlaces(player, hasLook, pitch, yaw, now);
+        handleQueuedPlaces(player, true, hasLook, pitch, yaw, now);
 
         // We can set the new pos after the places
         if (hasPosition) {
