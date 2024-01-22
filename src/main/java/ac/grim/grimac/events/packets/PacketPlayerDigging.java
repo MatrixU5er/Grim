@@ -3,6 +3,7 @@ package ac.grim.grimac.events.packets;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.checks.impl.movement.NoSlowA;
 import ac.grim.grimac.player.GrimPlayer;
+import ac.grim.grimac.events.packets.patch.ForceStopUseItem;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
@@ -150,11 +151,14 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
             WrapperPlayClientHeldItemChange slot = new WrapperPlayClientHeldItemChange(event);
 
             // Stop people from spamming the server with out of bounds exceptions
-            if (slot.getSlot() > 8) return;
+            if (slot.getSlot() < 0 || slot.getSlot() > 8) return;
             // Prevent issues if the player switches slots, while lagging, standing still, and is placing blocks
             CheckManagerListener.handleQueuedPlaces(player, false, false, 0, 0, System.currentTimeMillis());
 
             if (player.packetStateData.lastSlotSelected != slot.getSlot()) {
+                if (player.packetStateData.slowedByUsingItem) {
+                    ForceStopUseItem.handleSlowStateChange(player);
+                }
                 player.packetStateData.slowedByUsingItem = false;
                 // Sequence is ignored by the server
                 player.checkManager.getPostPredictionCheck(NoSlowA.class).didSlotChangeLastTick = true;
