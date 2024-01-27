@@ -5,6 +5,8 @@ import ac.grim.grimac.checks.type.BlockPlaceCheck;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.BlockPlace;
 import ac.grim.grimac.utils.anticheat.update.PostBlockPlace;
+import ac.grim.grimac.utils.collisions.HitboxData;
+import ac.grim.grimac.utils.collisions.datatypes.CollisionBox;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
 import ac.grim.grimac.utils.data.Pair;
 import ac.grim.grimac.utils.nmsutil.Materials;
@@ -14,6 +16,7 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.world.BlockFace;
+import com.github.retrooper.packetevents.protocol.world.states.type.StateType;
 import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.util.Vector3f;
@@ -30,9 +33,8 @@ public class RotationPlace extends BlockPlaceCheck {
     double flagBuffer = 0; // If the player flags once, force them to play legit, or we will cancel the tick before.
     boolean ignorePost = false;
 
-    // 1.11- servers use byte on cursor
+    // how much 1.11- server threshold safe?
     double cursorThreshold = PacketEvents.getAPI().getServerManager().getVersion().isOlderThan(ServerVersion.V_1_11) ? 0.0626 : 0.0001;
-    // We don't know the correct cursor behind ViaRewind?
     boolean shouldSkipCheckCursor = PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_11) && player.getClientVersion().isOlderThan(ClientVersion.V_1_11);
 
     public RotationPlace(GrimPlayer player) {
@@ -43,12 +45,51 @@ public class RotationPlace extends BlockPlaceCheck {
     public void onBlockPlace(final BlockPlace place) {
         if (place.getMaterial() == StateTypes.SCAFFOLDING) return;
 
+        if (!shouldSkipCheckCursor) {
+            Vector3i clicked = place.getPlacedAgainstBlockLocation();
+
+            // use this until grim fix block boxes
+            StateType type = player.compensatedWorld.getWrappedBlockStateAt(clicked).getType();
+            boolean ableCheckFullBlock = type.isBlocking() && type.isSolid() && !type.exceedsCube();
+
+            CollisionBox placedOn = HitboxData.getBlockHitbox(player, place.getMaterial(), player.getClientVersion(), player.compensatedWorld.getWrappedBlockStateAt(clicked), clicked.getX(), clicked.getY(), clicked.getZ());
+
+            if (ableCheckFullBlock && placedOn instanceof SimpleCollisionBox && placedOn.isFullBlock()) {
+                boolean flag = false;
+                switch (place.getDirection()) {
+                    case SOUTH:
+                        flag = place.getCursor().getZ() != 1f;
+                        break;
+                    case NORTH:
+                        flag = place.getCursor().getZ() != 0f;
+                        break;
+                    case EAST:
+                        flag = place.getCursor().getX() != 1f;
+                        break;
+                    case WEST:
+                        flag = place.getCursor().getX() != 0f;
+                        break;
+                    case UP:
+                        flag = place.getCursor().getY() != 1f;
+                        break;
+                    case DOWN:
+                        flag = place.getCursor().getY() != 0f;
+                }
+                if (flag) {
+                    flagBuffer = 1;
+                    if (flagAndAlert("pre-flying-impossible-cursor "+place.getCursor()) && shouldModifyPackets() && shouldCancel()) {
+                        place.resync();
+                    }
+                }
+            }
+        }
+
         if (flagBuffer > 0) {
-            // Check it like the player skipped a tick
+            // check it like the player sent a transaction
             PostBlockPlace postPlace = new PostBlockPlace(player, place);
             postPlace.setCursor(place.getCursor());
 
-            // Don't check cursor even player flagged
+            // don't check cursor even player flagged
             if (!didRayTraceHit(postPlace, true)) {
                 // If the player hit and has flagged this check recently
                 if (flagAndAlert("pre-flying")) {
@@ -75,11 +116,11 @@ public class RotationPlace extends BlockPlaceCheck {
         }
 
         // This can false with rapidly moving yaw in 1.8+ clients
-        // Let's just believe the placement passed FabricatedPlace
-        if (!isCursorValid(place.getCursor())) {
+        // wait didn't FabricatedPlace check work?
+        if (!isCursorValid(place.getCursor(), Materials.isShapeExceedsCube(place.getPlacedAgainstMaterial()) || place.getPlacedAgainstMaterial() == StateTypes.LECTERN ? 1.5 : 1)) {
             flagBuffer = 1;
             flagAndAlert("invalid-cursor "+place.getCursor());
-        } else if (!didRayTraceHit(place, shouldSkipCheckCursor)) { // Cursor check may false behind ViaRewind, exempt
+        } else if (!didRayTraceHit(place, shouldSkipCheckCursor)) { // cursor check may false behind ViaRewind, exempt
             flagBuffer = 1;
             flagAndAlert("post-flying");
         } else {
@@ -87,21 +128,21 @@ public class RotationPlace extends BlockPlaceCheck {
         }
     }
 
-    // The player must look at the block and the cursor
+    // the player must raytrace the block and the cursor
     private boolean didRayTraceHit(PostBlockPlace place, boolean skipCheckCursor) {
         Vector3i placeLocation = place.getPlacedAgainstBlockLocation();
 
         SimpleCollisionBox blockBox = new SimpleCollisionBox(placeLocation);
-        blockBox.expand(player.getMovementThreshold());
+        blockBox.expand(player.getClientVersion().isOlderThan(ClientVersion.V_1_9) ? 0.05 : player.getMovementThreshold());
 
         Vector3f cursor = place.getCursor();
         Vector3d clickLocation = new Vector3d(placeLocation.getX() + cursor.getX(), placeLocation.getY() + cursor.getY(), placeLocation.getZ() + cursor.getZ());
 
         SimpleCollisionBox cursorBox = new SimpleCollisionBox(clickLocation, clickLocation).expand(cursorThreshold);
-        cursorBox.expand(player.getMovementThreshold());
+        cursorBox.expand(player.getClientVersion().isOlderThan(ClientVersion.V_1_9) ? 0.05 : player.getMovementThreshold());
 
 
-        // player.xRot and player.yRot may false because of code elsewhere
+        // xRot and yRot may false because of code elsewhere
         float yaw = place.hasLook() ? place.getYaw() : player.xRot;
         float pitch = place.hasLook() ? place.getPitch() : player.yRot;
 
@@ -120,7 +161,7 @@ public class RotationPlace extends BlockPlaceCheck {
             possibleLookDirs = Collections.singletonList(new Vector3f(yaw, pitch, 0));
         }
 
-        // The player's rotation didn't change, don't use lastRot
+        // player's rotation didn't change, don't use lastRot
         if (!place.isFlying() || !place.hasLook()) {
             possibleLookDirs = Collections.singletonList(new Vector3f(yaw, pitch, 0));
         }
@@ -132,20 +173,20 @@ public class RotationPlace extends BlockPlaceCheck {
                 Ray trace = new Ray(player, starting.getX(), starting.getY(), starting.getZ(), lookDir.getX(), lookDir.getY());
 
                 if (isEyeInBox(blockBox, d)) {
-                    // Use the cursor recheck
+                    // use the cursor recheck
                     if (skipCheckCursor || isEyeInBox(cursorBox, d))
                         return true;
                     Pair<Vector, BlockFace> cursorIntercept = ReachUtils.calculateIntercept(cursorBox, trace.getOrigin(), trace.getPointAtDistance(6));
                     if (cursorIntercept.getFirst() != null)
                         return true;
-                    // End blockBox check
+                    // end blockBox check
                     continue;
                 }
 
                 Pair<Vector, BlockFace> blockIntercept = ReachUtils.calculateIntercept(blockBox, trace.getOrigin(), trace.getPointAtDistance(6));
 
                 if (blockIntercept.getFirst() != null) {
-                    // Use the cursor recheck
+                    // use the cursor recheck
                     if (skipCheckCursor || isEyeInBox(cursorBox, d))
                         return true;
                     Pair<Vector, BlockFace> cursorIntercept = ReachUtils.calculateIntercept(cursorBox, trace.getOrigin(), trace.getPointAtDistance(6));
@@ -163,8 +204,15 @@ public class RotationPlace extends BlockPlaceCheck {
         return eyePositions.isIntersected(box);
     }
 
-    private boolean isCursorValid(Vector3f cursor) {
-        return Float.isFinite(cursor.getX()) && Float.isFinite(cursor.getY()) && Float.isFinite(cursor.getZ());
+    private boolean isCursorValid(Vector3f cursor, double allowed) {
+        if (Float.isFinite(cursor.getX()) && Float.isFinite(cursor.getY()) && Float.isFinite(cursor.getZ())) {
+            double minAllowed = 1 - allowed;
+            if (cursor.getX() < minAllowed || cursor.getY() < minAllowed || cursor.getZ() < minAllowed || cursor.getX() > allowed || cursor.getY() > allowed || cursor.getZ() > allowed) {
+                return false;
+            }
+            return true;
+        }
+        return false;
     }
 
 }
