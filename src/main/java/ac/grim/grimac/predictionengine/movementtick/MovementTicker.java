@@ -27,7 +27,7 @@ public class MovementTicker {
 
     public static void handleEntityCollisions(GrimPlayer player) {
         // 1.7 and 1.8 do not have player collision
-        if (player.getClientVersion().isNewerThan(ClientVersion.V_1_8)) {
+        if (player.getClientVersion().isNewerThan(ClientVersion.V_1_8) && player.checkManager.getLegacyEntityCollisionHandler().pushable) {
             int possibleCollidingEntities = 0;
 
             // Players in vehicles do not have collisions
