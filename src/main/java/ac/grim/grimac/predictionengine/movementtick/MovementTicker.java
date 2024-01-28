@@ -27,11 +27,11 @@ public class MovementTicker {
 
     public static void handleEntityCollisions(GrimPlayer player) {
         // 1.7 and 1.8 do not have player collision
-        if (player.getClientVersion().isNewerThan(ClientVersion.V_1_8) && player.checkManager.getLegacyEntityCollisionHandler().pushable) {
+        if (player.getClientVersion().isNewerThan(ClientVersion.V_1_8)) {
             int possibleCollidingEntities = 0;
 
             // Players in vehicles do not have collisions
-            if (!player.compensatedEntities.getSelf().inVehicle()) {
+            if (!player.compensatedEntities.getSelf().inVehicle() && player.checkManager.getLegacyEntityCollisionHandler().pushable) {
                 // Calculate the offset of the player to colliding other stuff
                 SimpleCollisionBox playerBox = GetBoundingBox.getBoundingBoxFromPosAndSize(player.lastX, player.lastY, player.lastZ, 0.6f, 1.8f);
                 SimpleCollisionBox expandedPlayerBox = playerBox.copy().expandToAbsoluteCoordinates(player.x, player.y, player.z).expand(1);
