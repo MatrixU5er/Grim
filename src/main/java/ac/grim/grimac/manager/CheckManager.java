@@ -118,6 +118,7 @@ public class CheckManager {
                 .put(GhostBlockDetector.class, new GhostBlockDetector(player))
                 .put(Phase.class, new Phase(player))
                 .put(PostCheck.class, new PostCheck(player))
+                .put(LegacyEntityCollisionHandler.class, new LegacyEntityCollisionHandler(player))
                 .put(NoFallB.class, new NoFallB(player))
                 .put(OffsetHandler.class, new OffsetHandler(player))
                 .put(SuperDebug.class, new SuperDebug(player))
@@ -301,6 +302,10 @@ public class CheckManager {
 
     public OffsetHandler getOffsetHandler() {
         return getPostPredictionCheck(OffsetHandler.class);
+    }
+    
+    public LegacyEntityCollisionHandler getLegacyEntityCollisionHandler() {
+        return getPostPredictionCheck(LegacyEntityCollisionHandler.class);
     }
 
     @SuppressWarnings("unchecked")
